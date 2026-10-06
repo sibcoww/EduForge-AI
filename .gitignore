@@ -1,0 +1,14 @@
+.local/
+**/bin/
+**/obj/
+**/node_modules/
+**/.next/
+.env
+.env.local
+*.user
+*.tsbuildinfo
+
+.env.*
+!.env.example
+**/settings.json
+*.log

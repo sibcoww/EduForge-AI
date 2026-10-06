@@ -1,0 +1,11 @@
+import type { QuestionType } from "./teaching";
+export const sessionLabels = { Waiting: "Ожидание", Active: "Идёт тест", Finished: "Завершено" };
+export type SessionStatus = keyof typeof sessionLabels;
+export type SessionQuestion = { id: string; type: QuestionType; text: string; points: number; modelAnswer?: string; options: { id: string; text: string; isCorrect?: boolean }[] };
+export type Answer = { questionId: string; optionIds: string[]; text: string; score?: number | null; feedback?: string };
+export type Participant = { studentId: string; name: string; joinedAt: number | null; submittedAt: number | null; answeredCount: number; score: number | null; pendingReview: number; answers: Answer[] | null; activity: { kind: string; at: number }[] };
+export const activityLabels: Record<string, string> = { Hidden: "Покинул вкладку", Visible: "Вернулся во вкладку", Blur: "Окно потеряло фокус", Focus: "Окно получило фокус", FullscreenEntered: "Включил полный экран", FullscreenExited: "Вышел из полного экрана" };
+export type SessionSummary = { id: string; code: string; title: string; groupName: string; status: SessionStatus };
+export type TeacherSession = SessionSummary & { durationMinutes: number; startedAt: number | null; deadline: number | null; finishedAt: number | null; serverNow: number; totalPoints: number; questions: SessionQuestion[]; participants: Participant[] };
+export type Attempt = { id: string; title: string; groupName: string; status: SessionStatus; startedAt: number | null; deadline: number | null; serverNow: number; name: string; submittedAt: number | null; questions: SessionQuestion[] | null; answers: Answer[]; score: number | null; pendingReview: number; totalPoints: number };
+export type AttemptCredentials = { sessionId: string; token: string };

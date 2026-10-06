@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/EduForge.Api/EduForge.Api.csproj" />
+    <Project Path="backend/EduForge.Application/EduForge.Application.csproj" />
+    <Project Path="backend/EduForge.Domain/EduForge.Domain.csproj" />
+    <Project Path="backend/EduForge.Infrastructure/EduForge.Infrastructure.csproj" />
+    <Project Path="backend/EduForge.Tests/EduForge.Tests.csproj" />
+  </Folder>
+</Solution>
