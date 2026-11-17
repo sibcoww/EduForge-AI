@@ -3,9 +3,9 @@ using EduForge.Domain;
 
 namespace EduForge.Application;
 public record OptionInput(string Text, bool IsCorrect);
-public record QuestionInput(QuestionType Type, string Text, int Points, string ModelAnswer, List<OptionInput> Options);
-public record SaveQuiz(string Title, Guid? MaterialId, List<QuestionInput> Questions);
-public record GenerateQuiz(Guid MaterialId, int QuestionCount, string Difficulty, List<QuestionType> Types, int? TotalPoints = null);
+public record QuestionInput(QuestionType Type, string Text, int Points, string ModelAnswer, List<OptionInput> Options, QuestionGrounding? Grounding = null);
+public record SaveQuiz(string Title, Guid? MaterialId, List<QuestionInput> Questions, bool Controlled = false, Guid? GenerationRunId = null);
+public record GenerateQuiz(Guid MaterialId, int QuestionCount, string Difficulty, List<QuestionType> Types, int? TotalPoints = null, string Requirements = "", MaterialTeachingContext? Context = null);
 public record SaveGroup(string Name, string Description);
 public record SaveStudent(string FirstName, string LastName);
 

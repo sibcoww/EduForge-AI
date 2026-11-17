@@ -4,6 +4,20 @@ using Microsoft.EntityFrameworkCore;
 namespace EduForge.Infrastructure;
 public sealed class MaterialDbContext(DbContextOptions<MaterialDbContext> options) : DbContext(options)
 {
+    public DbSet<MaterialRevision> MaterialRevisions => Set<MaterialRevision>();
+    public DbSet<MaterialLearningPlan> LearningPlans => Set<MaterialLearningPlan>();
+    public DbSet<SourceDocument> SourceDocuments => Set<SourceDocument>();
+    public DbSet<GenerationRun> GenerationRuns => Set<GenerationRun>();
+    public DbSet<ContentAccess> ContentAccesses => Set<ContentAccess>();
+    public DbSet<CopyReference> CopyReferences => Set<CopyReference>();
+    public DbSet<PublicationReview> PublicationReviews => Set<PublicationReview>();
+    public DbSet<Assignment> Assignments => Set<Assignment>();
+    public DbSet<AssignmentSubmission> Submissions => Set<AssignmentSubmission>();
+    public DbSet<AssignmentAsset> AssignmentAssets => Set<AssignmentAsset>();
+    public DbSet<PasswordReset> PasswordResets => Set<PasswordReset>();
+    public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
+    public DbSet<GroupInvitation> Invitations => Set<GroupInvitation>();
+    public DbSet<EnrollmentRequest> Enrollments => Set<EnrollmentRequest>();
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
     public DbSet<Quiz> Quizzes => Set<Quiz>();
@@ -15,6 +29,35 @@ public sealed class MaterialDbContext(DbContextOptions<MaterialDbContext> option
     public DbSet<PublishedMaterial> Publications => Set<PublishedMaterial>();
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        builder.Entity<ContentAccess>().HasOne<Teacher>().WithMany().HasForeignKey(x=>x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<ContentAccess>().HasIndex(x=>new{x.Kind,x.SourceId}).IsUnique();
+        builder.Entity<ContentAccess>().HasIndex(x=>x.Token).IsUnique();
+        builder.Entity<ContentAccess>().Property(x=>x.Token).HasMaxLength(64);
+        builder.Entity<ContentAccess>().Property(x=>x.Version).IsConcurrencyToken();
+        builder.Entity<MaterialRevision>().HasOne<Material>().WithMany().HasForeignKey(x => x.MaterialId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<MaterialRevision>().HasIndex(x => x.MaterialId);
+        builder.Entity<MaterialLearningPlan>().HasKey(x => x.MaterialId);
+        builder.Entity<MaterialLearningPlan>().HasOne<Material>().WithMany().HasForeignKey(x => x.MaterialId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<MaterialLearningPlan>().Property(x => x.Version).IsConcurrencyToken();
+        builder.Entity<SourceDocument>().HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<SourceDocument>().HasIndex(x => new { x.TeacherId, x.Sha256 }).IsUnique();
+        builder.Entity<SourceDocument>().Property(x => x.Name).HasMaxLength(200);
+        builder.Entity<GenerationRun>().HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<GenerationRun>().HasIndex(x => new { x.TeacherId, x.StartedAt });
+        builder.Entity<MediaAsset>().HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<GroupInvitation>().HasOne<StudyGroup>().WithMany().HasForeignKey(x => x.Id).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<GroupInvitation>().HasIndex(x => x.Token).IsUnique();
+        builder.Entity<EnrollmentRequest>().HasOne<StudyGroup>().WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<EnrollmentRequest>().HasIndex(x => new { x.GroupId, x.NormalizedName }).IsUnique();
+        builder.Entity<CopyReference>().HasIndex(x=>new{x.TeacherId,x.CopyId,x.Kind}).IsUnique();
+        builder.Entity<PublicationReview>().HasIndex(x=>new{x.SourceId,x.Kind,x.CreatedAt});
+        builder.Entity<Assignment>().HasOne<Teacher>().WithMany().HasForeignKey(x=>x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<Assignment>().HasIndex(x=>x.Token).IsUnique();
+        builder.Entity<AssignmentSubmission>().HasOne<Assignment>().WithMany().HasForeignKey(x=>x.AssignmentId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<AssignmentAsset>().HasOne<Assignment>().WithMany().HasForeignKey(x=>x.AssignmentId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<AssignmentAsset>().HasOne<MediaAsset>().WithMany().HasForeignKey(x=>x.Id).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<PasswordReset>().HasOne<Teacher>().WithMany().HasForeignKey(x=>x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        builder.Entity<PasswordReset>().HasIndex(x=>x.Hash).IsUnique();
         var material = builder.Entity<Material>();
         material.HasKey(x => x.Id);
         material.Property(x => x.Title).HasMaxLength(200);

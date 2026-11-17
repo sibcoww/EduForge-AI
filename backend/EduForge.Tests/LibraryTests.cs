@@ -40,6 +40,7 @@ public sealed class LibraryTests
         await Login(author, "author@example.test", "Автор"); await Login(reader, "reader@example.test", "Читатель");
         const string formatted = "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Первый опубликованный текст\",\"marks\":[{\"type\":\"bold\"}]}]}]}";
         var id = await Material(author, content: formatted);
+        var savedContent = (await author.GetFromJsonAsync<JsonElement>($"/api/materials/{id}")).GetProperty("content").GetString();
         var before = await reader.GetFromJsonAsync<JsonElement>("/api/library"); Assert.Equal(0, before.GetProperty("total").GetInt32());
         Assert.Equal(HttpStatusCode.NotFound, (await reader.GetAsync($"/api/library/{id}")).StatusCode);
         await Json(await author.PostAsync($"/api/materials/{id}/publication", null));
@@ -48,7 +49,7 @@ public sealed class LibraryTests
         await Json(await author.PutAsJsonAsync($"/api/materials/{id}", new { title = "Изменённый черновик", subject = "Python", content = "Приватная версия" }));
         published = await reader.GetFromJsonAsync<JsonElement>($"/api/library/{id}"); Assert.Equal("Первый опубликованный текст", published.GetProperty("content").GetString());
         var copy = await Json(await reader.PostAsync($"/api/library/{id}/copy", null)); var copyId = copy.GetProperty("id").GetString(); Assert.NotEqual(id, copyId);
-        Assert.Equal(formatted, (await reader.GetFromJsonAsync<JsonElement>($"/api/materials/{copyId}")).GetProperty("content").GetString());
+        Assert.Equal(savedContent, (await reader.GetFromJsonAsync<JsonElement>($"/api/materials/{copyId}")).GetProperty("content").GetString());
         Assert.Equal(HttpStatusCode.NotFound, (await author.GetAsync($"/api/materials/{copyId}")).StatusCode);
         await Json(await reader.PutAsJsonAsync($"/api/materials/{copyId}", new { title = "Мой урок", subject = "Python", content = "Мои изменения" }));
         Assert.Equal("Первый опубликованный текст", (await author.GetFromJsonAsync<JsonElement>($"/api/library/{id}")).GetProperty("content").GetString());

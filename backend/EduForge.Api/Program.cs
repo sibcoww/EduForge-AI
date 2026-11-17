@@ -20,15 +20,24 @@ var key = builder.Configuration["Auth:SigningKey"] ?? throw new InvalidOperation
 if (Encoding.UTF8.GetByteCount(key) < 32) throw new InvalidOperationException("Auth signing key must contain at least 32 bytes.");
 builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<PythonRunner>();
 builder.Services.AddSignalR();
 builder.Services.AddScoped<SessionService>();
+builder.Services.AddScoped<ControlledLearning>();
+builder.Services.AddScoped<GenerationRecorder>();
+builder.Services.AddScoped<ContentSharing>();
 builder.Services.AddHostedService<SessionExpiryWorker>();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(allowIntegerValues: false)));
 builder.Services.AddDbContext<MaterialDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("Database") ?? throw new InvalidOperationException("ConnectionStrings:Database is required.")));
 builder.Services.AddScoped<IMaterialRepository, MaterialRepository>();
 builder.Services.AddScoped<IPasswordHasher<Teacher>, PasswordHasher<Teacher>>();
 builder.Services.AddSingleton<TokenService>();
+builder.Services.AddSingleton<IRecoveryMailSender, RecoveryMailSender>();
 builder.Services.AddHttpClient<IAiService, OpenAiService>(http => http.Timeout = TimeSpan.FromSeconds(90));
+builder.Services.AddHttpClient<IControlledAiService, OpenAiService>(http => http.Timeout = TimeSpan.FromSeconds(90));
+builder.Services.AddHttpClient<ISourceMaterialAiService, OpenAiService>(http => http.Timeout = TimeSpan.FromSeconds(90));
+builder.Services.AddHttpClient<IImageCaptionAiService, OpenAiService>(http => http.Timeout = TimeSpan.FromSeconds(90));
+builder.Services.AddHttpClient<ILearningObjectivesAiService, OpenAiService>(http => http.Timeout = TimeSpan.FromSeconds(90));
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(frontend).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 var auth = builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options => {
     options.TokenValidationParameters = new TokenValidationParameters {
@@ -58,6 +67,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(options => {
     options.RejectionStatusCode = 429;
     options.AddPolicy("join", context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    options.AddPolicy("code", context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.AddPolicy("ai", context => RateLimitPartition.GetFixedWindowLimiter(context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
@@ -80,7 +90,22 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrations")) {
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapTeacherAuthentication(googleEnabled, frontend);
 app.MapAdmin();
+app.MapProfile();
+app.MapRecovery();
+app.MapAssignments();
+app.MapAssignmentFiles();
+app.MapCopyTracking();
+app.MapModeration();
+app.MapInvitations();
+app.MapMedia();
+app.MapImageGeneration();
+app.MapImageCaptions();
+ContentSharing.Map(app);
+ContentDeletion.Map(app);
 app.MapTeaching();
+app.MapControlledLearning();
+app.MapSources();
+app.MapGenerationHistory();
 app.MapSessions();
 app.MapLibrary();
 app.MapTestLibrary();
@@ -88,25 +113,27 @@ var materials = app.MapGroup("/api/materials").RequireAuthorization();
 materials.MapGet("/", async (ClaimsPrincipal user, IMaterialRepository repository, CancellationToken ct) => Results.Ok(await repository.ListAsync(TeacherId(user), ct)));
 materials.MapGet("/{id:guid}", async (Guid id, ClaimsPrincipal user, IMaterialRepository repository, CancellationToken ct) =>
     await repository.GetAsync(id, TeacherId(user), ct) is { } material ? Results.Ok(material) : Results.NotFound());
-materials.MapPost("/", async (SaveMaterial request, ClaimsPrincipal user, IMaterialRepository repository, CancellationToken ct) => {
+materials.MapPost("/", async (SaveMaterial request, ClaimsPrincipal user, IMaterialRepository repository, GenerationRecorder recorder, CancellationToken ct) => {
     if (Validate(request) is { } error) return Results.ValidationProblem(error);
+    if (!await recorder.Owned(request.GenerationRunId, TeacherId(user), true, ct)) return Results.NotFound();
     var material = new Material { TeacherId = TeacherId(user) };
     Apply(material, request);
     await repository.SaveAsync(material, ct);
     return Results.Created($"/api/materials/{material.Id}", material);
 });
-materials.MapPut("/{id:guid}", async (Guid id, SaveMaterial request, ClaimsPrincipal user, IMaterialRepository repository, CancellationToken ct) => {
+materials.MapPut("/{id:guid}", async (Guid id, SaveMaterial request, ClaimsPrincipal user, IMaterialRepository repository, GenerationRecorder recorder, CancellationToken ct) => {
     if (Validate(request) is { } error) return Results.ValidationProblem(error);
+    if (!await recorder.Owned(request.GenerationRunId, TeacherId(user), true, ct)) return Results.NotFound();
     var material = await repository.GetAsync(id, TeacherId(user), ct);
     if (material is null) return Results.NotFound();
     Apply(material, request);
     await repository.SaveAsync(material, ct);
     return Results.Ok(material);
 });
-app.MapPost("/api/ai/material", async (GenerateMaterial request, IAiService ai, CancellationToken ct) => {
+app.MapPost("/api/ai/material", async (GenerateMaterial request, ClaimsPrincipal user, IAiService ai, GenerationRecorder recorder, CancellationToken ct) => {
     if (Validate(new SaveMaterial(request.Topic, request.Subject, "", request.Level, request.Language)) is { } errors) return Results.ValidationProblem(errors);
     if (request.Requirements is null || request.Requirements.Length > 4000) return Results.BadRequest(new { message = "Дополнительные требования: до 4000 символов." });
-    try { return Results.Ok(new { content = await ai.GenerateMaterialAsync(request, ct) }); }
+    try { var (run, content) = await recorder.Record(TeacherId(user), "Material", "topic-lesson-v2", request, Array.Empty<object>(), ai, () => ai.GenerateMaterialAsync(request, ct), ct); return Results.Ok(new { content, GenerationRunId = run.Id }); }
     catch (AiUnavailableException ex) { return Results.Problem(ex.Message, statusCode: 503); }
     catch (HttpRequestException) { return Results.Problem("Не удалось связаться с AI-провайдером.", statusCode: 503); }
     catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return Results.Problem("AI не ответил вовремя. Повторите запрос.", statusCode: 504); }
@@ -123,7 +150,9 @@ static Dictionary<string, string[]>? Validate(SaveMaterial request) {
     return errors.Count == 0 ? null : errors;
 }
 static void Apply(Material material, SaveMaterial request) {
-    material.Title = request.Title.Trim(); material.Subject = request.Subject.Trim(); material.Content = request.Content;
+    material.Title = request.Title.Trim(); material.Subject = request.Subject.Trim();
+    material.Content = MaterialStructure.Normalize(material.Id, request.Content, material.Content);
     material.Level = request.Level; material.Language = request.Language; material.UpdatedAt = DateTimeOffset.UtcNow;
+    material.GenerationRunId = request.GenerationRunId;
 }
 public partial class Program;

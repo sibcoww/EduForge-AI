@@ -7,6 +7,8 @@ public sealed class Quiz
     public Guid TeacherId { get; set; }
     public Guid? MaterialId { get; set; }
     public string Title { get; set; } = "";
+    public bool Controlled { get; set; }
+    public Guid? GenerationRunId { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<Question> Questions { get; set; } = [];
 }
@@ -19,6 +21,8 @@ public sealed class Question
     public string Text { get; set; } = "";
     public int Points { get; set; } = 1;
     public string ModelAnswer { get; set; } = "";
+    public string Grounding { get; set; } = "";
+    public string ReviewDigest { get; set; } = "";
     public List<QuestionOption> Options { get; set; } = [];
 }
 public sealed class QuestionOption

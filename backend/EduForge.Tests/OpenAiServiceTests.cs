@@ -25,6 +25,55 @@ public sealed class OpenAiServiceTests
         ["AI:ApiKey"] = "fake-test-key", ["AI:Model"] = "configured-test-model"
     }).Build());
     [Fact]
+    public async Task RemovesBoldBeforeValidatingTrueFalseOptions()
+    {
+        var text=JsonSerializer.Serialize(new{title="**Тест**",questions=new[]{new{type="TrueFalse",text="Это **объект**?",points=1,modelAnswer="**Да**",options=new[]{new{text="**Да**",isCorrect=true},new{text="**Нет**",isCorrect=false}}}}});
+        var response=JsonSerializer.Serialize(new{status="completed",output=new[]{new{content=new[]{new{type="output_text",text}}}}});
+        var result=await Service(new Handler(HttpStatusCode.OK,response)).GenerateQuizAsync("Тест","Объект",new(Guid.NewGuid(),1,"Лёгкая",[QuestionType.TrueFalse],1),default);
+        Assert.Equal("Тест",result.Title);Assert.Equal("Это объект?",result.Questions[0].Text);Assert.Equal("Да",result.Questions[0].Options[0].Text);Assert.Equal("Нет",result.Questions[0].Options[1].Text);
+    }
+    [Fact]
+    public async Task RejectsOptionsThatBecomeDuplicatesAfterMarkdownCleanup()
+    {
+        var text=JsonSerializer.Serialize(new{title="Тест",questions=new[]{new{type="SingleChoice",text="Вопрос",points=1,modelAnswer="Да",options=new[]{new{text="**Да**",isCorrect=true},new{text="Да",isCorrect=false}}}}});
+        var response=JsonSerializer.Serialize(new{status="completed",output=new[]{new{content=new[]{new{type="output_text",text}}}}});
+        await Assert.ThrowsAsync<AiUnavailableException>(()=>Service(new Handler(HttpStatusCode.OK,response)).GenerateQuizAsync("Тест","Материал",new(Guid.NewGuid(),1,"Лёгкая",[QuestionType.SingleChoice],1),default));
+    }
+    [Fact]
+    public async Task ObjectivesUseMaterialBlocksAudienceAndStrictSchema()
+    {
+        var text=JsonSerializer.Serialize(new{objectives=new[]{"Различать класс и объект","Находить атрибут объекта"}});
+        var response=JsonSerializer.Serialize(new{status="completed",output=new[]{new{content=new[]{new{type="output_text",text}}}}});
+        var handler=new Handler(HttpStatusCode.OK,response);var context=new MaterialTeachingContext("Начинающий","Русский","Для детей 6–10 лет");
+        var goals=await Service(handler).SuggestObjectivesAsync("Объекты",[new(Guid.NewGuid(),"paragraph","Объект — экземпляр класса")],context,default);
+        Assert.Equal(2,goals.Count);using var payload=JsonDocument.Parse(handler.RequestBody!);Assert.True(payload.RootElement.GetProperty("text").GetProperty("format").GetProperty("strict").GetBoolean());
+        using var input=JsonDocument.Parse(payload.RootElement.GetProperty("input").GetString()!);Assert.Equal(context.Requirements,input.RootElement.GetProperty("context").GetProperty("Requirements").GetString());Assert.Equal("Объект — экземпляр класса",input.RootElement.GetProperty("blocks")[0].GetProperty("Text").GetString());
+    }
+    [Theory]
+    [InlineData("{\"objectives\":[]}")]
+    [InlineData("{\"objectives\":[\"Назвать объект\",\"Назвать объект\"]}")]
+    public async Task RejectsInvalidObjectives(string text)
+    {
+        var response=JsonSerializer.Serialize(new{status="completed",output=new[]{new{content=new[]{new{type="output_text",text}}}}});
+        await Assert.ThrowsAsync<AiUnavailableException>(()=>Service(new Handler(HttpStatusCode.OK,response)).SuggestObjectivesAsync("Тема",[],new("Начинающий","Русский",""),default));
+    }
+    [Fact]
+    public async Task CaptionSendsImageAndNumberedAnnotationsUsingConfiguredModel()
+    {
+        var handler = new Handler(HttpStatusCode.OK, """{"status":"completed","output":[{"content":[{"type":"output_text","text":"1. В красном прямоугольнике выделен инструмент."}]}]}""");
+        var result = await Service(handler).GenerateCaptionAsync([137,80,78,71], "image/png", new("/api/media/unused", "SketchUp", [new(1,"rect","#dc2626","Прямоугольник")]), default);
+        Assert.Contains("красном", result);
+        using var body = JsonDocument.Parse(handler.RequestBody!);
+        Assert.Equal("configured-test-model", body.RootElement.GetProperty("model").GetString());
+        var parts = body.RootElement.GetProperty("input")[0].GetProperty("content");
+        Assert.Equal("input_image", parts[1].GetProperty("type").GetString());
+        Assert.StartsWith("data:image/png;base64,", parts[1].GetProperty("image_url").GetString());
+        using var notes = JsonDocument.Parse(parts[0].GetProperty("text").GetString()!);
+        Assert.Equal(1, notes.RootElement.GetProperty("Annotations")[0].GetProperty("Number").GetInt32());
+        Assert.Equal("#dc2626", notes.RootElement.GetProperty("Annotations")[0].GetProperty("Color").GetString());
+        Assert.False(body.RootElement.GetProperty("store").GetBoolean());
+    }
+    [Fact]
     public async Task UsesUpdatedLocalModelAndReportsMissingModelSeparately()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
@@ -68,6 +117,24 @@ public sealed class OpenAiServiceTests
         Assert.DoesNotContain("do-not-expose", error.Message);
     }
     [Fact]
+    public async Task ExpiredKeyIsReportedWithoutReturningProviderMessageOrSecret()
+    {
+        var handler = new Handler(HttpStatusCode.Unauthorized, """{"error":{"code":"expired_secret_key","message":"secret-provider-message"}}""");
+        var service = Service(handler);
+        var error = await Assert.ThrowsAsync<AiUnavailableException>(() => service.GenerateMaterialAsync(new("Python", "Циклы", ""), default));
+        Assert.Contains("истёк", error.Message);
+        Assert.Equal("expired_secret_key", service.LastReceipt!.ErrorCode);
+        Assert.DoesNotContain("secret-provider-message", error.Message);
+    }
+    [Fact]
+    public async Task ReceiptReadsActualModelAndUsageAndAcceptsMissingCounts()
+    {
+        var handler = new Handler(HttpStatusCode.OK, """{"model":"resolved-model","usage":{"input_tokens":42,"output_tokens":null},"status":"completed","output":[{"content":[{"type":"output_text","text":"Урок"}]}]}""");
+        var service = Service(handler);
+        Assert.Equal("Урок", await service.GenerateMaterialAsync(new("Python", "Циклы", ""), default));
+        Assert.Equal("resolved-model", service.LastReceipt!.Model); Assert.Equal(42, service.LastReceipt.InputTokens); Assert.Null(service.LastReceipt.OutputTokens);
+    }
+    [Fact]
     public async Task GeneratesStructuredTestUsingSourceAndRequestedTypes()
     {
         var generated = new { title = "Циклы", questions = new[] { new { type = "SingleChoice", text = "Какой цикл?", points = 1, modelAnswer = "", options = new[] { new { text = "for", isCorrect = true }, new { text = "if", isCorrect = false } } } } };
@@ -95,7 +162,7 @@ public sealed class OpenAiServiceTests
         var generated = JsonSerializer.Serialize(new { title = "Тест", questions });
         var response = JsonSerializer.Serialize(new { status = "completed", output = new[] { new { content = new[] { new { type = "output_text", text = generated } } } } });
         var handler = new Handler(HttpStatusCode.OK, response);
-        var result = await Service(handler).GenerateQuizAsync("Тест", "Материал", new GenerateQuiz(Guid.NewGuid(), 3, "Средняя", [QuestionType.SingleChoice], total), default);
+        var result = await Service(handler).GenerateQuizAsync("Тест", "Материал", new GenerateQuiz(Guid.NewGuid(), 3, "Средняя", [QuestionType.SingleChoice], total, "Короткие вопросы",new("Начинающий","Русский","Для детей 6–10 лет")), default);
         Assert.Equal(total, result.Questions.Sum(q => q.Points));
         Assert.All(result.Questions, q => {
             Assert.InRange(q.Points, 1, 100);
@@ -105,6 +172,8 @@ public sealed class OpenAiServiceTests
         using var payload = JsonDocument.Parse(handler.RequestBody!);
         using var input = JsonDocument.Parse(payload.RootElement.GetProperty("input").GetString()!);
         Assert.Equal(total, input.RootElement.GetProperty("TotalPoints").GetInt32());
+        Assert.Equal("Для детей 6–10 лет",input.RootElement.GetProperty("Context").GetProperty("Requirements").GetString());
+        Assert.Equal("Короткие вопросы",input.RootElement.GetProperty("Requirements").GetString());
     }
     [Theory]
     [InlineData(2, "SingleChoice", true)]

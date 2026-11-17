@@ -1,0 +1,3 @@
+namespace EduForge.Domain;
+public sealed class CopyReference { public Guid Id {get;set;}=Guid.NewGuid();public Guid TeacherId {get;set;}public Guid CopyId {get;set;}public Guid SourceId {get;set;}public string Kind {get;set;}="material";public Guid SourceRevision {get;set;}public string Baseline {get;set;}=""; }
+public sealed class PublicationReview { public Guid Id {get;set;}=Guid.NewGuid();public Guid TeacherId {get;set;}public Guid SourceId {get;set;}public string Kind {get;set;}="material";public string Title {get;set;}="";public string Payload {get;set;}="";public string Status {get;set;}="Pending";public string Reason {get;set;}="";public long CreatedAt {get;set;}=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); }

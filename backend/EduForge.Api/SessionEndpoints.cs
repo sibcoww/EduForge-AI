@@ -21,11 +21,12 @@ public static class SessionEndpoints
     {
         var teacher = app.MapGroup("/api/sessions").RequireAuthorization();
         teacher.MapGet("/", async (ClaimsPrincipal user, MaterialDbContext db, CancellationToken ct) => Results.Ok(await db.Sessions.AsNoTracking().Where(s => s.TeacherId == Owner(user)).OrderByDescending(s => s.CreatedAt).Select(s => new { s.Id, s.Code, s.Title, s.GroupName, s.Status, s.CreatedAt }).ToListAsync(ct)));
-        teacher.MapPost("/", async (CreateSession input, ClaimsPrincipal user, MaterialDbContext db, SessionService service, CancellationToken ct) => {
+        teacher.MapPost("/", async (CreateSession input, ClaimsPrincipal user, MaterialDbContext db, SessionService service, ControlledLearning learning, CancellationToken ct) => {
             if (input.DurationMinutes is < 1 or > 180) return Results.BadRequest(new { message = "Продолжительность: от 1 до 180 минут." });
             var quiz = await db.Quizzes.Include(q => q.Questions).ThenInclude(q => q.Options).SingleOrDefaultAsync(q => q.Id == input.QuizId && q.TeacherId == Owner(user), ct);
             var group = await db.Groups.Include(g => g.Students).SingleOrDefaultAsync(g => g.Id == input.GroupId && g.TeacherId == Owner(user), ct);
             if (quiz is null || group is null) return Results.NotFound();
+            if (!await learning.CanUse(quiz, Owner(user), ct)) return Results.Conflict(new { message = "Проверьте основания вопросов и покрытие целей в тесте перед созданием сессии." });
             if (quiz.Questions.Count == 0 || group.Students.Count is < 1 or > 200) return Results.BadRequest(new { message = "Нужен тест с вопросами и группа от 1 до 200 студентов." });
             var snapshot = new SessionSnapshot {
                 Questions = quiz.Questions.OrderBy(q => q.Position).Select(q => new SessionQuestion {
@@ -100,7 +101,7 @@ public static class SessionEndpoints
         });
         var attempt = app.MapGroup("/api/attempts");
         attempt.MapPost("/{id:guid}/activity", async (Guid id, LogSessionActivity input, HttpRequest request, MaterialDbContext db, SessionService service, CancellationToken ct) => {
-            if (input.Kind is not ("Hidden" or "Visible" or "Blur" or "Focus" or "FullscreenEntered" or "FullscreenExited")) return Results.BadRequest();
+            if (input.Kind is not ("Hidden" or "Visible" or "Blur" or "Focus" or "FullscreenEntered" or "FullscreenExited" or "Disconnected" or "Reconnected")) return Results.BadRequest();
             var session = await db.Sessions.SingleOrDefaultAsync(s => s.Id == id, ct);
             if (session is null) return Results.NotFound();
             var snapshot = SessionService.Read(session); var p = SessionService.Participant(snapshot, Token(request));

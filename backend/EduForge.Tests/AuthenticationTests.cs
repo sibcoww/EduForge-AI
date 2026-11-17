@@ -20,14 +20,21 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     readonly SqliteConnection connection = new($"Data Source=eduforge-{Guid.NewGuid():N};Mode=Memory;Cache=Shared");
     readonly IAiService? ai;
+    public bool ModerationEnabled {get;set;}
+    public EduForge.Api.IRecoveryMailSender? MailSender { get; set; }
     public bool GoogleEnabled { get; set; }
     public string? AdminEmail { get; set; }
     public string? ContentRootOverride { get; set; }
     public TimeProvider? Clock { get; set; }
+    public IControlledAiService? ControlledAi { get; set; }
+    public ISourceMaterialAiService? SourceAi { get; set; }
+    public ILearningObjectivesAiService? ObjectivesAi { get; set; }
+    public IImageCaptionAiService? CaptionAi { get; set; }
     public ApiFactory(IAiService? ai = null) { this.ai = ai; connection.Open(); }
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.UseSetting("Moderation:Enabled", ModerationEnabled.ToString());
         if (ContentRootOverride is not null) builder.UseContentRoot(ContentRootOverride);
         builder.ConfigureLogging(logging => { logging.ClearProviders(); logging.AddConsole(); logging.SetMinimumLevel(LogLevel.Warning); });
         if (GoogleEnabled) { builder.UseSetting("Google:ClientId", "test-client"); builder.UseSetting("Google:ClientSecret", "test-secret"); }
@@ -40,6 +47,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["Admin:Email"] = AdminEmail, ["Google:ClientId"] = GoogleEnabled ? "test-client" : "", ["Google:ClientSecret"] = GoogleEnabled ? "test-secret" : ""
         }));
         builder.ConfigureServices(services => {
+            if (ControlledAi is not null) { services.RemoveAll<IControlledAiService>(); services.AddSingleton(ControlledAi); }
+            if (ObjectivesAi is not null) { services.RemoveAll<ILearningObjectivesAiService>(); services.AddSingleton(ObjectivesAi); }
+            if (CaptionAi is not null) { services.RemoveAll<IImageCaptionAiService>(); services.AddSingleton(CaptionAi); }
+            if (SourceAi is not null) { services.RemoveAll<ISourceMaterialAiService>(); services.AddSingleton(SourceAi); }
+            if (MailSender is not null) { services.RemoveAll<EduForge.Api.IRecoveryMailSender>(); services.AddSingleton(MailSender); }
             if (Clock is not null) { services.RemoveAll<TimeProvider>(); services.AddSingleton(Clock); }
             services.RemoveAll<IDataProtectionProvider>();
             services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());

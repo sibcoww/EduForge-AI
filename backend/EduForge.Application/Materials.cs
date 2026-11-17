@@ -1,6 +1,6 @@
 using EduForge.Domain;
 namespace EduForge.Application;
-public record SaveMaterial(string Title, string Subject, string Content, string Level = "Начинающий", string Language = "Русский");
+public record SaveMaterial(string Title, string Subject, string Content, string Level = "Начинающий", string Language = "Русский", Guid? GenerationRunId = null);
 public record GenerateMaterial(string Subject, string Topic, string Requirements, string Level = "Начинающий", string Language = "Русский");
 public interface IMaterialRepository
 {

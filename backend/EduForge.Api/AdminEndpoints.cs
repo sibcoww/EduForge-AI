@@ -24,8 +24,10 @@ public static class AdminEndpoints
             if (teacher is null) return Results.NotFound();
             if (id.ToString() == user.FindFirstValue(ClaimTypes.NameIdentifier) || IsAdmin(teacher.Email, app.Configuration)) return Results.Problem("Нельзя удалить аккаунт администратора.", statusCode: 409);
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            var hasData = await db.Materials.AnyAsync(x => x.TeacherId == id, ct) || await db.Quizzes.AnyAsync(x => x.TeacherId == id, ct) || await db.Groups.AnyAsync(x => x.TeacherId == id, ct) || await db.Sessions.AnyAsync(x => x.TeacherId == id, ct);
+            var hasData = await db.ContentAccesses.AnyAsync(x=>x.TeacherId==id,ct) || await db.Materials.AnyAsync(x => x.TeacherId == id, ct) || await db.Quizzes.AnyAsync(x => x.TeacherId == id, ct) || await db.Groups.AnyAsync(x => x.TeacherId == id, ct) || await db.Sessions.AnyAsync(x => x.TeacherId == id, ct) || await db.Assignments.AnyAsync(x=>x.TeacherId==id,ct) || await db.MediaAssets.AnyAsync(x=>x.TeacherId==id,ct) || await db.SourceDocuments.AnyAsync(x=>x.TeacherId==id,ct) || await db.GenerationRuns.AnyAsync(x=>x.TeacherId==id,ct);
             if (hasData && deleteData != true) return Results.Problem("У аккаунта есть данные. Подтвердите удаление вместе с данными.", statusCode: 409);
+            await db.PublicationReviews.Where(x=>x.TeacherId==id).ExecuteDeleteAsync(ct);
+            await db.CopyReferences.Where(x=>x.TeacherId==id).ExecuteDeleteAsync(ct);
             await db.Sessions.Where(x => x.TeacherId == id).ExecuteDeleteAsync(ct);
             await db.Publications.Where(x => x.TeacherId == id).ExecuteDeleteAsync(ct);
             await db.QuizPublications.Where(x => x.TeacherId == id).ExecuteDeleteAsync(ct);

@@ -1,0 +1,18 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["frontend/eduforge-web/src"],
+  "locale": "ru-RU",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Date", "Form", "Scrollbar", "Toast", "CRUD"],
+  "ownership": { "Select/Listbox": "native", "Date": "native" },
+  "requiredCommands": ["unit", "typecheck", "build"],
+  "commands": {
+    "unit": "npm --prefix frontend/eduforge-web test",
+    "typecheck": "npm --prefix frontend/eduforge-web run typecheck",
+    "build": "npm --prefix frontend/eduforge-web run build"
+  },
+  "evidence": {
+    "crudFullFlow": "frontend/eduforge-web/tests/design-browser.cjs",
+    "failurePaths": "frontend/eduforge-web/tests/design-browser.cjs"
+  }
+}

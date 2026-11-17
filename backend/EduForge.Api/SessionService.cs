@@ -53,8 +53,8 @@ public sealed class SessionService(MaterialDbContext db, TimeProvider clock, IHu
     public object StudentView(TestingSession session, SessionSnapshot snapshot, SessionParticipant p) => new {
         session.Id, session.Title, session.GroupName, session.Status, session.StartedAt, session.Deadline, ServerNow = Now,
         p.Name, p.SubmittedAt,
-        Questions = session.Status == SessionStatus.Waiting ? null : snapshot.Questions.Select(q => new {
-            q.Id, q.Type, q.Text, q.Points, Options = q.Options.Select(o => new { o.Id, o.Text })
+        Questions = session.Status == SessionStatus.Waiting ? null : snapshot.Questions.OrderBy(q => Hash(p.StudentId.ToString()+q.Id.ToString())).Select(q => new {
+            q.Id, q.Type, q.Text, q.Points, Options = (q.Type == QuestionType.TrueFalse ? q.Options.AsEnumerable() : q.Options.OrderBy(o=>Hash(p.StudentId.ToString()+o.Id.ToString()))).Select(o => new { o.Id, o.Text })
         }).ToArray(),
         Answers = p.Answers.Select(a => new { QuestionId = a.Key, a.Value.OptionIds, a.Value.Text }),
         Score = p.SubmittedAt.HasValue ? p.Answers.Values.Sum(a => a.Score ?? 0) : (int?)null,

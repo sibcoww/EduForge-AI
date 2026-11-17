@@ -16,14 +16,17 @@ public sealed class TokenService(IConfiguration configuration, IWebHostEnvironme
     public const string CookieName = "eduforge_session";
     public void SignIn(HttpContext context, Teacher teacher)
     {
-        var expires = DateTime.UtcNow.AddHours(8);
+        var configured = configuration["Auth__SessionDays"] ?? configuration["Auth:SessionDays"];
+        var days = int.TryParse(configured, out var requested) ? Math.Clamp(requested, 1, 90) : 30;
+        var lifetime = TimeSpan.FromDays(days);
+        var expires = DateTime.UtcNow.Add(lifetime);
         var token = new JwtSecurityToken("EduForge", "EduForge", [
             new Claim(ClaimTypes.NameIdentifier, teacher.Id.ToString()),
             new Claim("stamp", teacher.SecurityStamp.ToString())
         ], expires: expires, signingCredentials: new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Auth:SigningKey"]!)), SecurityAlgorithms.HmacSha256));
         context.Response.Cookies.Append(CookieName, new JwtSecurityTokenHandler().WriteToken(token), new CookieOptions {
-            HttpOnly = true, Secure = !environment.IsDevelopment(), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires
+            HttpOnly = true, Secure = !environment.IsDevelopment(), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires, MaxAge = lifetime
         });
     }
 }

@@ -1,0 +1,3 @@
+namespace EduForge.Domain;
+public sealed class Assignment {public Guid Id {get;set;}=Guid.NewGuid();public Guid TeacherId {get;set;}public string Token {get;set;}="";public string Title {get;set;}="";public string Description {get;set;}="";public string Kind {get;set;}="Python";public int MaxScore {get;set;}=100;public string Tests {get;set;}="[]";public string Rubric {get;set;}="";}
+public sealed class AssignmentSubmission {public Guid Id {get;set;}=Guid.NewGuid();public Guid AssignmentId {get;set;}public string Name {get;set;}="";public string Content {get;set;}="";public string Attachment {get;set;}="";public int? Score {get;set;}public string Feedback {get;set;}="";public long At {get;set;}=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();}

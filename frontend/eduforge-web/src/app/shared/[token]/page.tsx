@@ -1,0 +1,14 @@
+"use client";
+import { useEffect,useState } from "react";
+import TeacherShell from "../../../components/TeacherShell";
+import MaterialEditor from "../../../components/MaterialEditor";
+import { request } from "../../../lib/api";
+import { plainAiText, questionTypes, type QuestionType } from "../../../lib/teaching";
+type Shared={kind:"material"|"test";title:string;authorName:string;subject:string;level:string;language:string;content:string;questions:{type:QuestionType;text:string;points:number;options:string[]}[]};
+function SharedViewer(){
+ const [value,setValue]=useState<Shared|null>(null),[error,setError]=useState(""),[reload,setReload]=useState(0);
+ useEffect(()=>{const controller=new AbortController();setError("");setValue(null);const token=location.pathname.split("/").filter(Boolean).at(-1)||"";void request<Shared>(`/api/shared/${encodeURIComponent(token)}`,{signal:controller.signal}).then(next=>{if(!controller.signal.aborted)setValue(next);}).catch(e=>{if(!controller.signal.aborted)setError(e.status===404?"Ссылка недействительна или автор закрыл доступ.":e.message);});return()=>controller.abort();},[reload]);
+ function contentWithMediaToken(content:string){try{const token=location.pathname.split("/").filter(Boolean).at(-1)||"";const doc=JSON.parse(content);function visit(node:{type?:string;attrs?:{src?:string};content?:unknown[]}){if(node.type==="image"&&node.attrs?.src?.startsWith("/api/media/"))node.attrs.src+=`?share=${encodeURIComponent(token)}`;node.content?.forEach(child=>visit(child as typeof node));}visit(doc);return JSON.stringify(doc);}catch{return content;}}
+ return <section className="editor shared-content"><p className="eyebrow">ПРОСМОТР ПО ССЫЛКЕ</p>{error?<><h1>Не удалось открыть</h1><p className="alert" role="alert">{error}</p><button type="button" onClick={()=>setReload(x=>x+1)}>Повторить</button></>:value?<><span className="tag">{value.subject||(value.kind==="test"?"Тест":"Материал")}</span><h1>{plainAiText(value.title)}</h1><p className="muted">Автор: {value.authorName} · {value.level} · {value.language}</p>{value.kind==="material"?<MaterialEditor content={contentWithMediaToken(value.content)} disabled readOnly/>:<><p className="hint">Вопросы показаны без правильных ответов и оснований. Для прохождения преподаватель создаёт тестовую сессию.</p>{value.questions.map((q,i)=><article className="question-card" key={i}><span className="tag">{questionTypes[q.type]} · {q.points} баллов</span><h3>{i+1}. {plainAiText(q.text)}</h3>{q.options.length>0&&<ul className="shared-question-options">{q.options.map((option,n)=><li key={n}>{plainAiText(option)}</li>)}</ul>}</article>)}</>}</>:<p className="muted" role="status">Открываем сохранённую версию…</p>}</section>;
+}
+export default function Page(){return <TeacherShell active="library"><SharedViewer/></TeacherShell>;}

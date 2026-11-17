@@ -1,0 +1,8 @@
+{
+  "cases": [
+    { "id": "python-loops", "subject": "Python", "file": "python-loops.md", "objectives": ["Определить результат range(3)", "Объяснить роль отступа в теле цикла"] },
+    { "id": "html-page", "subject": "HTML", "file": "html-page.md", "objectives": ["Объяснить назначение заголовка и абзаца", "Определить назначение атрибута href"] },
+    { "id": "css-card", "subject": "CSS", "file": "css-card.md", "objectives": ["Различать внутренний и внешний отступ", "Объяснить селектор класса в примере"] },
+    { "id": "model-rubric", "subject": "SketchUp", "file": "model-rubric.md", "objectives": ["Перечислить требования к учебной модели", "Применить заданные критерии оценивания"] }
+  ]
+}

@@ -93,8 +93,8 @@ public sealed class SessionTests
         Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/tests/{quiz}")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/groups/{group}")).StatusCode);
         await Json(await alice.PostAsync($"/api/sessions/{id}/start", null));
-        var active = await student.GetFromJsonAsync<JsonElement>($"/api/attempts/{id}"); Assert.Equal("Выберите две", active.GetProperty("questions")[0].GetProperty("text").GetString());
-        var qid = active.GetProperty("questions")[0].GetProperty("id").GetString();
+        var active = await student.GetFromJsonAsync<JsonElement>($"/api/attempts/{id}"); Assert.Contains(active.GetProperty("questions").EnumerateArray(),q=>q.GetProperty("text").GetString()=="Выберите две");
+        var qid = active.GetProperty("questions").EnumerateArray().Single(q=>q.GetProperty("type").GetString()=="MultipleChoice").GetProperty("id").GetString();
         Assert.Equal(HttpStatusCode.BadRequest, (await student.PutAsJsonAsync($"/api/attempts/{id}/answers/{qid}", new { optionIds = new[] { Guid.NewGuid() }, text = "" })).StatusCode);
         await Json(await alice.PostAsync($"/api/sessions/{id}/finish", null));
         var result = await alice.GetFromJsonAsync<JsonElement>($"/api/sessions/{id}"); Assert.Equal("Айтбаев Данияр", result.GetProperty("participants")[0].GetProperty("name").GetString());

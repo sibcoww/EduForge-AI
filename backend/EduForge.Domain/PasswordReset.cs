@@ -1,0 +1,1 @@
+namespace EduForge.Domain;public sealed class PasswordReset {public Guid Id {get;set;}=Guid.NewGuid();public Guid TeacherId {get;set;}public string Hash {get;set;}="";public long ExpiresAt {get;set;}public bool Used {get;set;}}
